@@ -1,0 +1,26 @@
+name: GitHub Daily Push Checker
+
+on:
+  schedule:
+    - cron: '0 15 * * *' # 9 PM Bangladesh (UTC+6)
+  workflow_dispatch:
+
+jobs:
+  check-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check today's GitHub push
+        id: check
+        run: |
+          today=$(date -u +"%Y-%m-%d")
+          events=$(curl -s https://api.github.com/users/${{ github.actor }}/events)
+          count=$(echo "$events" | jq '[.[] | select(.type=="PushEvent") | select(.created_at | startswith("'"$today"'"))] | length')
+          echo "push_count=$count" >> $GITHUB_OUTPUT
+
+      - name: Send Telegram alert if no push
+        if: steps.check.outputs.push_count == '0'
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            -d text="🚨 No GitHub push today!\nTime: 9 PM\nDon’t break the streak 💪🔥"
