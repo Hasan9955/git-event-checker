@@ -2,7 +2,7 @@ name: GitHub Daily Contribution Checker
 
 on:
   schedule:
-    - cron: '0 8 * * *' # 9 PM Bangladesh Time (UTC+6)
+    - cron: '0 15 * * *' # 9 PM Bangladesh Time (UTC+6)
   workflow_dispatch:
 
 jobs:
@@ -16,27 +16,20 @@ jobs:
           bd_today=$(TZ=Asia/Dhaka date +"%Y-%m-%d")
           bd_time=$(TZ=Asia/Dhaka date +"%H:%M")
           
-          # Fetch last 100 events with authentication
-          events=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/user/events?per_page=100")
+          # Fetch events and save to file
+          curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/users/${{ github.actor }}/events?per_page=100" \
+            > events.json
           
-          # Debug: Check if we got valid response
-          if echo "$events" | jq empty 2>/dev/null; then
-            # Count PushEvents created today (BD date)
-            count=$(echo "$events" | jq --arg date "$bd_today" '
-              [.[] 
-                | select(.type=="PushEvent" or .type=="CreateEvent")
-                | select(.created_at | startswith($date))
-              ] | length
-            ')
-            echo "Commits found: $count"
-          else
-            count=0
-            echo "Error fetching events, defaulting to 0"
-          fi
+          # Debug: Print response to see what we got
+          cat events.json
           
+          # Count PushEvents created today (BD date)
+          count=$(cat events.json | jq "[.[] | select(.type==\"PushEvent\" and (.created_at | startswith(\"$bd_today\")))] | length")
+          
+          echo "Commits found: $count"
           echo "count=$count" >> $GITHUB_OUTPUT
           echo "bd_date=$bd_today" >> $GITHUB_OUTPUT
           echo "bd_time=$bd_time" >> $GITHUB_OUTPUT
@@ -47,7 +40,7 @@ jobs:
           bd_date="${{ steps.check.outputs.bd_date }}"
           bd_time="${{ steps.check.outputs.bd_time }}"
           
-          if [ "$count" -eq 0 ]; then
+          if [ "$count" = "0" ]; then
             # No commits - Send alert
             message="🚨 *NO GITHUB COMMITS TODAY!*%0A%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A💪 Go commit something NOW!%0A🔥 Keep your streak alive!%0A%0A_#ProductiveVibes #CodingTime_"
           else
@@ -59,9 +52,6 @@ jobs:
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d "text=$message" \
             -d "parse_mode=Markdown"
-
-
-
 
 
 
