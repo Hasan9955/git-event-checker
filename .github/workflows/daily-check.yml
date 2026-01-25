@@ -2,7 +2,7 @@ name: GitHub Daily Contribution Checker
 
 on:
   schedule:
-    - cron: '0 3 * * *' # 9 AM Bangladesh
+    - cron: '0 3 * * *' # 10 AM Bangladesh
   workflow_dispatch:
 
 jobs:
