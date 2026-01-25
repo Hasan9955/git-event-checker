@@ -2,38 +2,126 @@ name: GitHub Daily Contribution Checker
 
 on:
   schedule:
-    - cron: '0 3 * * *' # 10 AM Bangladesh
+    - cron: '0 8 * * *' # 9 PM Bangladesh Time (UTC+6)
   workflow_dispatch:
 
 jobs:
   check-contribution:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check GitHub push activity today (BD time)
         id: check
         run: |
           # Get Bangladesh date (YYYY-MM-DD)
           bd_today=$(TZ=Asia/Dhaka date +"%Y-%m-%d")
-
-          # Fetch last 100 events (authenticated)
+          bd_time=$(TZ=Asia/Dhaka date +"%H:%M")
+          
+          # Fetch last 100 events with authentication
           events=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/users/${{ github.actor }}/events?per_page=100)
-
-          # Count PushEvents created today (BD date)
-          count=$(echo "$events" | jq --arg date "$bd_today" '
-            [.[] 
-              | select(.type=="PushEvent")
-              | select(.created_at | startswith($date))
-            ] | length
-          ')
-
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/user/events?per_page=100")
+          
+          # Debug: Check if we got valid response
+          if echo "$events" | jq empty 2>/dev/null; then
+            # Count PushEvents created today (BD date)
+            count=$(echo "$events" | jq --arg date "$bd_today" '
+              [.[] 
+                | select(.type=="PushEvent" or .type=="CreateEvent")
+                | select(.created_at | startswith($date))
+              ] | length
+            ')
+            echo "Commits found: $count"
+          else
+            count=0
+            echo "Error fetching events, defaulting to 0"
+          fi
+          
           echo "count=$count" >> $GITHUB_OUTPUT
+          echo "bd_date=$bd_today" >> $GITHUB_OUTPUT
+          echo "bd_time=$bd_time" >> $GITHUB_OUTPUT
 
-      - name: Send Telegram alert if no push
-        if: steps.check.outputs.count == '0'
+      - name: Send Telegram notification
         run: |
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
-            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="🚨 No GitHub push today!\n⏰ Time: 9 PM (BD)\nGo commit something 💪🔥"
+          count="${{ steps.check.outputs.count }}"
+          bd_date="${{ steps.check.outputs.bd_date }}"
+          bd_time="${{ steps.check.outputs.bd_time }}"
+          
+          if [ "$count" -eq 0 ]; then
+            # No commits - Send alert
+            message="🚨 *NO GITHUB COMMITS TODAY!*%0A%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A💪 Go commit something NOW!%0A🔥 Keep your streak alive!%0A%0A_#ProductiveVibes #CodingTime_"
+          else
+            # Commits found - Send success message
+            message="✅ *GREAT JOB TODAY!*%0A%0A🎉 You made $count push(es) today!%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A🔥 Keep up the momentum!%0A💚 Your streak is safe!%0A%0A_#ProductiveDay #GitHubStreak_"
+          fi
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=$message" \
+            -d "parse_mode=Markdown"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# name: GitHub Daily Contribution Checker
+
+# on:
+#   schedule:
+#     - cron: '0 3 * * *' # 10 AM Bangladesh
+#   workflow_dispatch:
+
+# jobs:
+#   check-contribution:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Check GitHub push activity today (BD time)
+#         id: check
+#         run: |
+#           # Get Bangladesh date (YYYY-MM-DD)
+#           bd_today=$(TZ=Asia/Dhaka date +"%Y-%m-%d")
+
+#           # Fetch last 100 events (authenticated)
+#           events=$(curl -s \
+#             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+#             https://api.github.com/users/${{ github.actor }}/events?per_page=100)
+
+#           # Count PushEvents created today (BD date)
+#           count=$(echo "$events" | jq --arg date "$bd_today" '
+#             [.[] 
+#               | select(.type=="PushEvent")
+#               | select(.created_at | startswith($date))
+#             ] | length
+#           ')
+
+#           echo "count=$count" >> $GITHUB_OUTPUT
+
+#       - name: Send Telegram alert if no push
+#         if: steps.check.outputs.count == '0'
+#         run: |
+#           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+#             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+#             -d text="🚨 No GitHub push today!\n⏰ Time: 9 PM (BD)\nGo commit something 💪🔥"
