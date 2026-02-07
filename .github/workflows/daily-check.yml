@@ -2,34 +2,32 @@ name: GitHub Daily Contribution Checker
 
 on:
   schedule:
-    - cron: '0 10 * * *' # 12 PM Bangladesh Time (UTC+6)
+    - cron: '30 17 * * *' # 11:30 PM BD Time (17:30 UTC) - Better to check late at night
   workflow_dispatch:
 
 jobs:
   check-contribution:
     runs-on: ubuntu-latest
     steps:
-      - name: Check GitHub push activity today (BD time)
+      - name: Check GitHub push activity today
         id: check
         run: |
-          # Get Bangladesh date (YYYY-MM-DD)
+          # 1. Get Today's Date in BD for the message
           bd_today=$(TZ=Asia/Dhaka date +"%Y-%m-%d")
           bd_time=$(TZ=Asia/Dhaka date +"%H:%M")
           
-          # Fetch events and save to file
-          curl -s \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/users/${{ github.actor }}/events?per_page=100" \
-            > events.json
+          # 2. Fetch events (Public events don't strictly need a token, but it helps with limits)
+          # Use your actual GitHub username instead of github.actor if this runs in a private repo
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               "https://api.github.com/users/${{ github.actor }}/events?per_page=100" > events.json
+
+          # 3. IMPROVED JQ LOGIC:
+          # This converts the UTC time from GitHub into Asia/Dhaka time before checking the date.
+          # It requires the 'fromdateiso8601' function in jq.
           
-          # Debug: Print response to see what we got
-          cat events.json
-          
-          # Count PushEvents created today (BD date)
-          count=$(cat events.json | jq "[.[] | select(.type==\"PushEvent\" and (.created_at | startswith(\"$bd_today\")))] | length")
-          
-          echo "Commits found: $count"
+          count=$(cat events.json | jq --arg today "$bd_today" '[.[] | select(.type=="PushEvent") | select((.created_at | fromdateiso8601 | strflocaltime("%Y-%m-%d"; "Asia/Dhaka")) == $today)] | length')
+
+          echo "Commits found for $bd_today: $count"
           echo "count=$count" >> $GITHUB_OUTPUT
           echo "bd_date=$bd_today" >> $GITHUB_OUTPUT
           echo "bd_time=$bd_time" >> $GITHUB_OUTPUT
@@ -40,18 +38,86 @@ jobs:
           bd_date="${{ steps.check.outputs.bd_date }}"
           bd_time="${{ steps.check.outputs.bd_time }}"
           
-          if [ "$count" = "0" ]; then
-            # No commits - Send alert
-            message="🚨 *NO GITHUB COMMITS TODAY!*%0A%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A💪 Go commit something NOW!%0A🔥 Keep your streak alive!%0A%0A_#ProductiveVibes #CodingTime_"
+          if [ "$count" -eq "0" ]; then
+            message="🚨 *NO GITHUB COMMITS TODAY!*%0A%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A💪 Go commit something NOW!%0A🔥 Keep your streak alive!"
           else
-            # Commits found - Send success message
-            message="✅ *GREAT JOB TODAY!*%0A%0A🎉 You made $count push(es) today!%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A🔥 Keep up the momentum!%0A💚 Your streak is safe!%0A%0A_#ProductiveDay #GitHubStreak_"
+            message="✅ *GREAT JOB TODAY!*%0A%0A🎉 You made $count push(es) today!%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A🔥 Keep up the momentum!%0A💚 Your streak is safe!"
           fi
           
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d "text=$message" \
             -d "parse_mode=Markdown"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# name: GitHub Daily Contribution Checker
+
+# on:
+#   schedule:
+#     - cron: '0 10 * * *' # 12 PM Bangladesh Time (UTC+6)
+#   workflow_dispatch:
+
+# jobs:
+#   check-contribution:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Check GitHub push activity today (BD time)
+#         id: check
+#         run: |
+#           # Get Bangladesh date (YYYY-MM-DD)
+#           bd_today=$(TZ=Asia/Dhaka date +"%Y-%m-%d")
+#           bd_time=$(TZ=Asia/Dhaka date +"%H:%M")
+          
+#           # Fetch events and save to file
+#           curl -s \
+#             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+#             -H "Accept: application/vnd.github.v3+json" \
+#             "https://api.github.com/users/${{ github.actor }}/events?per_page=100" \
+#             > events.json
+          
+#           # Debug: Print response to see what we got
+#           cat events.json
+          
+#           # Count PushEvents created today (BD date)
+#           count=$(cat events.json | jq "[.[] | select(.type==\"PushEvent\" and (.created_at | startswith(\"$bd_today\")))] | length")
+          
+#           echo "Commits found: $count"
+#           echo "count=$count" >> $GITHUB_OUTPUT
+#           echo "bd_date=$bd_today" >> $GITHUB_OUTPUT
+#           echo "bd_time=$bd_time" >> $GITHUB_OUTPUT
+
+#       - name: Send Telegram notification
+#         run: |
+#           count="${{ steps.check.outputs.count }}"
+#           bd_date="${{ steps.check.outputs.bd_date }}"
+#           bd_time="${{ steps.check.outputs.bd_time }}"
+          
+#           if [ "$count" = "0" ]; then
+#             # No commits - Send alert
+#             message="🚨 *NO GITHUB COMMITS TODAY!*%0A%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A💪 Go commit something NOW!%0A🔥 Keep your streak alive!%0A%0A_#ProductiveVibes #CodingTime_"
+#           else
+#             # Commits found - Send success message
+#             message="✅ *GREAT JOB TODAY!*%0A%0A🎉 You made $count push(es) today!%0A⏰ Time: $bd_time (BD)%0A📅 Date: $bd_date%0A%0A🔥 Keep up the momentum!%0A💚 Your streak is safe!%0A%0A_#ProductiveDay #GitHubStreak_"
+#           fi
+          
+#           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+#             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+#             -d "text=$message" \
+#             -d "parse_mode=Markdown"
 
 
 
